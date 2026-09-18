@@ -337,6 +337,12 @@ internal sealed partial class CommanderSupplyHeliService
             return;
         }
 
+        // Aircraft like the Chimera carry their own complete transport AI and fly, drop and land
+        // without any of NOCommander's helicopter-only steering hooks. We still record a mission
+        // for them so the commander's chosen LZ is known and can be enforced (see
+        // CommanderSupplyChimeraDirector), but we skip every helo-specific steering path below.
+        bool selfFlying = CommanderSupplyFixedWingSupport.HasSelfFlyingSupplyController(aircraft);
+
         CargoMission mission = new(
             pending.Hq,
             pending.Target,
@@ -385,7 +391,14 @@ internal sealed partial class CommanderSupplyHeliService
                 ? $"Airdrop: {pending.CargoLabel}"
                 : $"Cargo Delivery: {pending.CargoLabel}";
         CommanderSelectionService.PinMissionUnit(aircraft, "SUPPLY", missionLabel);
-        if (pending.HighTerrainClearance && !TryBindTerrainAutopilot(aircraft, mission))
+        if (selfFlying)
+        {
+            // Terrain-clearance autopilot binding only drives AutopilotHelo/AutopilotTiltwing,
+            // and this aircraft handles its own terrain following. Bias its role toward transport
+            // so a mid-flight role re-check doesn't turn the supply run into a gunship sortie.
+            CommanderSupplyChimeraDirector.OnMissionAssigned(aircraft);
+        }
+        else if (pending.HighTerrainClearance && !TryBindTerrainAutopilot(aircraft, mission))
         {
             pendingTerrainAutopilotBindings.Add(aircraft);
         }
@@ -605,6 +618,18 @@ internal sealed partial class CommanderSupplyHeliService
 
     private bool ShouldDelayAssignedCargoTakeoff(Pilot pilot, PilotBaseState requestedState)
     {
+        // Every guard below exists to shepherd a vanilla cargo helicopter through its
+        // AIHeloTakeoffState/AIHeloTransportState sequence. A fixed-wing aircraft's pilot has no
+        // helo states at all, so those properties are null - and a freshly spawned, parked
+        // aircraft's currentState is null too. Without this exit, "currentState == AIHeloTakeoffState"
+        // is null == null, the switch gets cancelled, and a self-flying aircraft can never enter
+        // any state: it just sits on the ramp. Never block state changes for those aircraft.
+        if (pilot.aircraft != null
+            && CommanderSupplyFixedWingSupport.HasSelfFlyingSupplyController(pilot.aircraft))
+        {
+            return false;
+        }
+
         if (pilot.aircraft != null
             && assignedMissions.TryGetValue(pilot.aircraft, out CargoMission assignedMission)
             && assignedMission.Cancelled)
@@ -614,6 +639,7 @@ internal sealed partial class CommanderSupplyHeliService
 
         if (pilot.aircraft != null
             && assignedMissions.ContainsKey(pilot.aircraft)
+            && pilot.AIHeloTakeoffState != null
             && pilot.currentState == pilot.AIHeloTakeoffState
             && requestedState != pilot.currentState
             && pilot.aircraft.radarAlt < 30f)
@@ -622,6 +648,7 @@ internal sealed partial class CommanderSupplyHeliService
         }
 
         if (requestedState == pilot.currentState
+            || pilot.AIHeloTransportState == null
             || pilot.currentState != pilot.AIHeloTransportState
             || pilot.aircraft == null
             || !assignedMissions.TryGetValue(pilot.aircraft, out CargoMission mission)
@@ -1385,6 +1412,7 @@ internal sealed partial class CommanderSupplyHeliService
     {
         Aircraft? aircraft = AircraftField?.GetValue(state) as Aircraft;
         if (aircraft == null
+            || CommanderSupplyFixedWingSupport.HasSelfFlyingSupplyController(aircraft)
             || !assignedMissions.TryGetValue(aircraft, out CargoMission mission)
             || mission.OriginAirbase == null
             || mission.OriginAirbase.disabled
@@ -1395,6 +1423,68 @@ internal sealed partial class CommanderSupplyHeliService
 
         StateNearestAirbaseField?.SetValue(state, mission.OriginAirbase);
         return true;
+    }
+
+    /// <summary>
+    /// Looks up the commander mission for a self-flying supply aircraft. Used by the Chimera
+    /// director's Harmony patches, which run inside the aircraft's own AI tick.
+    /// </summary>
+    internal static bool TryGetSelfFlyingMission(
+        Aircraft aircraft,
+        out GlobalPosition target,
+        out Unit? navalTarget,
+        out FactionHQ? hq)
+    {
+        target = default;
+        navalTarget = null;
+        hq = null;
+
+        if (Instance == null
+            || aircraft == null
+            || !Instance.assignedMissions.TryGetValue(aircraft, out CargoMission mission))
+        {
+            return false;
+        }
+
+        target = mission.Target;
+        navalTarget = mission.NavalTarget;
+        hq = mission.Hq;
+        return true;
+    }
+
+    /// <summary>
+    /// Keeps self-flying supply aircraft (Chimera and friends) aimed at the LZ the commander
+    /// picked. Their own AI re-runs its mission search on a timer and will otherwise re-target
+    /// itself mid-flight, which looks like the aircraft taking off and then wandering off to
+    /// service something else.
+    /// </summary>
+    private void DirectSelfFlyingSupplyMissions()
+    {
+        if (assignedMissions.Count == 0)
+        {
+            return;
+        }
+
+        foreach (KeyValuePair<Aircraft, CargoMission> entry in assignedMissions)
+        {
+            Aircraft aircraft = entry.Key;
+            if (aircraft == null || aircraft.disabled)
+            {
+                continue;
+            }
+
+            if (!CommanderSupplyFixedWingSupport.HasSelfFlyingSupplyController(aircraft))
+            {
+                continue;
+            }
+
+            CargoMission mission = entry.Value;
+            CommanderSupplyChimeraDirector.EnforceDropPoint(
+                aircraft,
+                mission.Target,
+                mission.NavalTarget,
+                mission.Hq);
+        }
     }
 
     private void PruneFinishedMissions()
@@ -1435,6 +1525,7 @@ internal sealed partial class CommanderSupplyHeliService
                 assignedAutopilotAircraft.Remove(aircraft.autopilot);
             }
             pendingTerrainAutopilotBindings.Remove(aircraft);
+            CommanderSupplyChimeraDirector.Forget(aircraft);
 
             if (assignedMissions.TryGetValue(aircraft, out CargoMission failedMission)
                 && !failedMission.Cancelled

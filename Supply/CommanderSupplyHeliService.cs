@@ -76,6 +76,7 @@ internal sealed partial class CommanderSupplyHeliService
     private bool uiVisible;
     private float nextAirbaseRefreshAt;
     private float nextMissionPruneAt;
+    private float nextSelfFlyingDirectAt;
     private float statusUntil;
     private string statusText = string.Empty;
 
@@ -220,6 +221,11 @@ internal sealed partial class CommanderSupplyHeliService
             }
         }
 
+        if (CommanderScheduler.IsDue(ref nextSelfFlyingDirectAt, 1f))
+        {
+            DirectSelfFlyingSupplyMissions();
+        }
+
         if (CommanderScheduler.IsDue(ref nextMissionPruneAt, 2f))
         {
             PruneFinishedMissions();
@@ -249,6 +255,8 @@ internal sealed partial class CommanderSupplyHeliService
         useOtherAirfields = true;
         nextAirbaseRefreshAt = CommanderScheduler.Stagger("supply.airbases", 1f, 0.5f);
         nextMissionPruneAt = CommanderScheduler.Stagger("supply.prune", 2f, 0.8f);
+        nextSelfFlyingDirectAt = CommanderScheduler.Stagger("supply.selfflying", 1f, 0.3f);
+        CommanderSupplyChimeraDirector.Reset();
         statusText = string.Empty;
     }
 

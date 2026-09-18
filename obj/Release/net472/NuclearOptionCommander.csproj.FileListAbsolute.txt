@@ -1,0 +1,7 @@
+C:\Users\Victini\Downloads\NOCommander-0.1.2.0-chimera-support\bin\Release\net472\NuclearOptionCommander.dll
+C:\Users\Victini\Downloads\NOCommander-0.1.2.0-chimera-support\bin\Release\net472\NuclearOptionCommander.pdb
+C:\Users\Victini\Downloads\NOCommander-0.1.2.0-chimera-support\obj\Release\net472\NuclearOptionCommander.csproj.AssemblyReference.cache
+C:\Users\Victini\Downloads\NOCommander-0.1.2.0-chimera-support\obj\Release\net472\NuclearOptionCommander.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Victini\Downloads\NOCommander-0.1.2.0-chimera-support\obj\Release\net472\NuclearOptionCommander.csproj.CoreCompileInputs.cache
+C:\Users\Victini\Downloads\NOCommander-0.1.2.0-chimera-support\obj\Release\net472\NuclearOptionCommander.dll
+C:\Users\Victini\Downloads\NOCommander-0.1.2.0-chimera-support\obj\Release\net472\NuclearOptionCommander.pdb

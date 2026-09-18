@@ -15,7 +15,7 @@ internal sealed partial class CommanderSupplyHeliService
         }
 
         Aircraft? aircraft = definition.unitPrefab.GetComponent<Aircraft>();
-        if (aircraft == null || aircraft.weaponManager == null || !HasHeloPilot(aircraft))
+        if (aircraft == null || aircraft.weaponManager == null || !IsEligibleSupplyAircraft(aircraft))
         {
             return null;
         }
@@ -365,6 +365,18 @@ internal sealed partial class CommanderSupplyHeliService
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// True for aircraft NOCommander's Air Supply system knows how to task: either a vanilla
+    /// helicopter/tiltwing (steered via the AIHeloTransportState hooks in
+    /// CommanderSupplyHeliPatches) or an aircraft carrying a recognized self-flying transport
+    /// AI controller such as the Chimera's, which manages its own delivery flight entirely and
+    /// only needs to be spawned.
+    /// </summary>
+    private static bool IsEligibleSupplyAircraft(Aircraft aircraft)
+    {
+        return HasHeloPilot(aircraft) || CommanderSupplyFixedWingSupport.HasSelfFlyingSupplyController(aircraft.gameObject);
     }
 
     private static bool HasHeloPilot(Aircraft aircraft)
